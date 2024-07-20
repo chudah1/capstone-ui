@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:video_player/video_player.dart';
 import 'firebase_options.dart';
+import 'dart:html' as html;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +40,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   bool _isUploading = false;
   String _responseMessage = '';
+  VideoPlayerController? _controller;
 
   Future<void> _uploadVideo() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -52,7 +55,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('http://127.0.0.1:5000/process_video'),
+        Uri.parse('http://35.244.76.160/process_video'),
       );
       request.files.add(
         http.MultipartFile.fromBytes(
@@ -68,6 +71,17 @@ class _MyHomePageState extends State<MyHomePage> {
         setState(() {
           _responseMessage = 'File uploaded successfully. Processing started.';
         });
+
+        // Save video locally
+        html.Blob blob = html.Blob([result.files.single.bytes!]);
+        String url = html.Url.createObjectUrlFromBlob(blob);
+
+        // Convert URL to Uri and initialize VideoPlayerController with the URL
+        _controller = VideoPlayerController.networkUrl(Uri.parse(url))
+          ..initialize().then((_) {
+            setState(() {});
+            _controller!.play();
+          });
       } else {
         setState(() {
           _responseMessage = 'Failed to upload video.';
@@ -85,6 +99,12 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -94,16 +114,49 @@ class _MyHomePageState extends State<MyHomePage> {
         children: [
           Expanded(
             flex: 1,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                ElevatedButton(
-                  onPressed: _isUploading ? null : _uploadVideo,
-                  child: _isUploading ? const CircularProgressIndicator() : const Text('Upload Video'),
-                ),
-                const SizedBox(height: 20),
-                if (_responseMessage.isNotEmpty) Text(_responseMessage),
-              ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  ElevatedButton(
+                    onPressed: _isUploading ? null : _uploadVideo,
+                    child: _isUploading
+                        ? const CircularProgressIndicator()
+                        : const Text('Upload Video'),
+                  ),
+                  const SizedBox(height: 20),
+                  if (_responseMessage.isNotEmpty) Text(_responseMessage),
+                  const SizedBox(height: 20),
+                  if (_controller != null && _controller!.value.isInitialized)
+                    Container(
+                      width: 900,
+                      height: 700, // Set the desired height here
+                      
+                      child: VideoPlayer(_controller!),
+                      
+                    ),
+                  if (_controller != null && _controller!.value.isInitialized)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            _controller!.value.isPlaying
+                                ? Icons.pause
+                                : Icons.play_arrow,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _controller!.value.isPlaying
+                                  ? _controller!.pause()
+                                  : _controller!.play();
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ),
           ),
           const Expanded(
